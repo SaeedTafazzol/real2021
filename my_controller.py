@@ -1,11 +1,21 @@
+import imp
 from real_robots.policy import BasePolicy
-
-
+import matplotlib.pyplot as plt
+import numpy as np
+import cv2
+import utils
+import torch
+from skimage import io
 class RandomPolicy(BasePolicy):
     def __init__(self, action_space, observation_space):
         self.action_space = action_space
         self.observation_space = observation_space
-        self.render = False
+
+        self.render = True
+        print(observation_space['retina'].shape)
+
+        self.buffer = utils.ReplayBuffer(np.array(observation_space['retina'].shape)[[2,0,1]],1)
+        self.ctr = 0
 
     def start_intrinsic_phase(self):
         """
@@ -97,7 +107,18 @@ class RandomPolicy(BasePolicy):
                 - an extrinsic trial ends
             otherwise it will always be false.
         """
+        # print(observation['retina'].shape)
+        # print(observation['retina'])
+        # cv2.imshow('retina', observation['retina'])
+        # cv2.waitKey(1) 
+        
+        self.buffer.add(torch.tensor(observation['retina'].transpose(2,0,1)))
+        
         action = self.action_space.sample()
+        io.imsave('./img/'+str(self.ctr)+'.png',observation['retina'])
+        self.ctr+=1
+        # print(action)
+        # print(self.action_space)
         action['render'] = self.render
         return action
 
