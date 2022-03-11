@@ -6,17 +6,31 @@ import cv2
 import utils
 import torch
 from skimage import io
+import yaml
+import BVAE
+
+
 class RandomPolicy(BasePolicy):
     def __init__(self, action_space, observation_space):
+
+        with open('options.yml', 'r') as ymlfile:
+            cfg = yaml.load(ymlfile, Loader=yaml.FullLoader)
+            self.observation_mode = cfg['ENVIRONMENT_TYPE']
+            self.action_mode = cfg['EVALUATION_ACTION_TYPE']
+            self.object_num = cfg['EVALUATION_N_OBJECTS']
+
         self.action_space = action_space
         self.observation_space = observation_space
 
         self.render = True
-        print(observation_space['retina'].shape)
+        self.buffer = utils.ReplayBuffer(observation_space,action_space,self.observation_mode,self.action_mode)
+        self.train_loader = torch.utils.data.DataLoader(self.buffer,batch_size=64,num_workers= 8, shuffle=True)
 
-        self.buffer = utils.ReplayBuffer(np.array(observation_space['retina'].shape)[[2,0,1]],1)
-        self.ctr = 0
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+        self.auto = BVAE.autoencoder(self.device)
+        self.loss = 0
+        self.time_step = 0
     def start_intrinsic_phase(self):
         """
         The evaluator will call this function to signal the start of the
@@ -107,19 +121,22 @@ class RandomPolicy(BasePolicy):
                 - an extrinsic trial ends
             otherwise it will always be false.
         """
-        # print(observation['retina'].shape)
-        # print(observation['retina'])
-        # cv2.imshow('retina', observation['retina'])
-        # cv2.waitKey(1) 
         
-        self.buffer.add(torch.tensor(observation['retina'].transpose(2,0,1)))
         
         action = self.action_space.sample()
-        io.imsave('./img/'+str(self.ctr)+'.png',observation['retina'])
-        self.ctr+=1
-        # print(action)
-        # print(self.action_space)
+        self.buffer.add(observation,action,observation,0)
         action['render'] = self.render
+        
+        if (self.time_step+1)%10==0 and self.time_step>=1000:
+            self.loss+= self.auto.train(self.train_loader)
+
+        if (self.time_step+1)%100==0:
+            print(self.time_step,self.loss/100)
+            generated = self.auto.sample()
+            cv2.imshow('gen',generated.detach().cpu().squeeze().numpy().transpose(1,2,0))
+            cv2.waitKey(1)
+            self.loss = 0
+        self.time_step+=1
         return action
 
 SubmittedPolicy=RandomPolicy
