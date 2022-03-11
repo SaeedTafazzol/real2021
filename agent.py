@@ -3,13 +3,28 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+from config import config, calculate_output
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Implementation of Twin Delayed Deep Deterministic Policy Gradients (TD3)
 # Paper: https://arxiv.org/abs/1802.09477
 
+class Representation(nn.Module):
+	def __init__(self):
+		super(Representation, self).__init__()
+
+		self.conv1 = nn.Conv2d(config['input_channels'],config['conv1'][0],config['conv1'][1],stride=config['conv1'][2])
+		self.conv2 = nn.Conv2d(config['conv1'][0],config['conv2'][0],config['conv2'][1],stride=config['conv2'][2])
+		self.conv3 = nn.Conv2d(config['conv2'][0],config['conv3'][0],config['conv3'][1],stride=config['conv3'][2])
+
+	def forward(self, input):
+		out = F.leaky_relu(self.conv1(input))
+		out = F.leaky_relu(self.conv2(out))
+		out = F.leaky_relu(self.conv3(out))
+
+		out = out.reshape(-1,np.prod(config['output_conv3']))
+		return out
 
 class Actor(nn.Module):
 	def __init__(self, state_dim, action_dim, max_action):
@@ -20,7 +35,6 @@ class Actor(nn.Module):
 		self.l3 = nn.Linear(256, action_dim)
 		
 		self.max_action = max_action
-		
 
 	def forward(self, state):
 		a = F.relu(self.l1(state))
@@ -65,7 +79,7 @@ class Critic(nn.Module):
 		return q1
 
 
-class TD3(object):
+class Agent(object):
 	def __init__(
 		self,
 		state_dim,
@@ -77,6 +91,8 @@ class TD3(object):
 		noise_clip=0.5,
 		policy_freq=2
 	):
+
+		self.representation = Representation()
 
 		self.actor = Actor(state_dim, action_dim, max_action).to(device)
 		self.actor_target = copy.deepcopy(self.actor)

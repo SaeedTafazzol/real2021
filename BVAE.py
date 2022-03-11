@@ -3,18 +3,19 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import *
+from config import config
 
 
 class Encoder(nn.Module):
   def __init__(self,z=10):
     super(Encoder, self).__init__()
 
-    self.conv1 = nn.Conv2d(3,8,(7,7),stride=4)
-    self.conv2 = nn.Conv2d(8,16,(5,5),stride=3)
-    self.conv3 = nn.Conv2d(16,32,(3,3),stride=2)
+    self.conv1 = nn.Conv2d(config['input_channels'],config['conv1'][0],config['conv1'][1],stride=config['conv1'][2])
+    self.conv2 = nn.Conv2d(config['conv1'][0],config['conv2'][0],config['conv2'][1],stride=config['conv2'][2])
+    self.conv3 = nn.Conv2d(config['conv2'][0],config['conv3'][0],config['conv3'][1],stride=config['conv3'][2])
 
     
-    self.fc = nn.Linear(32*6*6,128)    
+    self.fc = nn.Linear(np.prod(config['output_conv3']),128)
  
     self.mean = nn.Linear(128 ,32)
     self.log_std = nn.Linear(128 ,32)
@@ -24,7 +25,7 @@ class Encoder(nn.Module):
     out = F.leaky_relu(self.conv2(out))
     out = F.leaky_relu(self.conv3(out))
 
-    out = out.reshape(-1,32*6*6)
+    out = out.reshape(-1,np.prod(config['output_conv3']))
     out = F.leaky_relu(self.fc(out))
     mean = 	F.tanh(self.mean(out))
     log_std = self.log_std(out)
@@ -36,17 +37,20 @@ class Decoder(nn.Module):
     super(Decoder, self).__init__()
 
     self.fc1 = nn.Linear(32,128)
-    self.fc2 = nn.Linear(128,32*6*6)
-    self.conv1 = nn.Conv2d(32,16,(3,3),padding='same')
-    self.conv2 = nn.Conv2d(16,8,(5,5),padding='same')
-    self.conv3 = nn.Conv2d(8,3,(7,7),padding='same')
+    self.fc2 = nn.Linear(128,np.prod(config['output_conv3']))
+    self.conv1 = nn.Conv2d(config['conv3'][0], config['conv2'][0],config['conv3'][1],padding='same')
+    self.conv2 = nn.Conv2d(config['conv2'][0],config['conv1'][0],config['conv2'][1],padding='same')
+    self.conv3 = nn.Conv2d(config['conv1'][0],config['input_channels'],config['conv1'][1],padding='same')
+
   def forward(self, lat):
     out = F.leaky_relu(self.fc1(lat))
     out = F.leaky_relu(self.fc2(out))
-    out = out.reshape(-1,32,6,6)
-    out = F.leaky_relu(self.conv1(F.interpolate(out,(14,14),mode='bilinear')))
-    out = F.leaky_relu(self.conv2(F.interpolate(out,(44,44),mode='bilinear')))
-    out = F.sigmoid(self.conv3(F.interpolate(out,(180,180),mode='bilinear')))
+    out = out.reshape(-1,config['output_conv3'][0], config['output_conv3'][1], config['output_conv3'][2])
+    out = F.leaky_relu(self.conv1(F.interpolate(out,(config['output_conv2'][1],config['output_conv2'][2]),
+                                                mode='bilinear')))
+    out = F.leaky_relu(self.conv2(F.interpolate(out,(config['output_conv1'][1],config['output_conv1'][2]),
+                                                mode='bilinear')))
+    out = F.sigmoid(self.conv3(F.interpolate(out,(config['image_size'][1],config['image_size'][2]),mode='bilinear')))
 
     return	out
 
