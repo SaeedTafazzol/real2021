@@ -8,7 +8,7 @@ import torch
 from skimage import io
 import yaml
 import BVAE
-
+from config import config
 
 class RandomPolicy(BasePolicy):
     def __init__(self, action_space, observation_space):
@@ -21,10 +21,10 @@ class RandomPolicy(BasePolicy):
 
         self.action_space = action_space
         self.observation_space = observation_space
-
+        self.batch_size = config['batch_size']
         self.render = True
         self.buffer = utils.ReplayBuffer(observation_space,action_space,self.observation_mode,self.action_mode)
-        self.train_loader = torch.utils.data.DataLoader(self.buffer,batch_size=64,num_workers= 8, shuffle=True)
+        self.train_loader = torch.utils.data.DataLoader(self.buffer,batch_size=self.batch_size,num_workers= 8, shuffle=True)
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -130,10 +130,14 @@ class RandomPolicy(BasePolicy):
         if (self.time_step+1)%10==0 and self.time_step>=1000:
             self.loss+= self.auto.train(self.train_loader)
 
-        if (self.time_step+1)%100==0:
+        if (self.time_step+1)%300==0:
             print(self.time_step,self.loss/100)
-            generated = self.auto.sample()
-            cv2.imshow('gen',generated.detach().cpu().squeeze().numpy().transpose(1,2,0))
+            g = []
+            for i in range(10):
+                generated = self.auto.sample()
+                g.append(generated.detach().cpu().squeeze().numpy().transpose(1,2,0)[:,:,[2,1,0]])
+                
+            cv2.imshow('img',np.concatenate(g,axis=1))
             cv2.waitKey(1)
             self.loss = 0
         self.time_step+=1

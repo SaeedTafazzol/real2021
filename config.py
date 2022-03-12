@@ -9,11 +9,15 @@ def calculate_output(input_dim, conv):  # assume height x width padding, kernel_
 
 config = {
 
-    'conv1': [8, (7,7), 4, 0],  # output channels, kernel, stride, padding
-    'conv2': [16, (5,5), 3, 0],  # output channels, kernel, stride, padding,
+    'conv1': [32, (7,7), 4, 0],  # output channels, kernel, stride, padding
+    'conv2': [32, (5,5), 3, 0],  # output channels, kernel, stride, padding,
     'conv3': [32, (3,3), 2, 0],  # output channels, kernel, stride, padding
     'input_channels': 3, # replace with env param
-    'image_size': (3, 180, 180) # cropped image
+    'image_size': (3, 180, 180), # cropped image
+    'batch_size': 64,
+    'BVAE_hidden':256,
+    'BVAE_latent':128,
+    'agent_hidden':256,
 }
 
 config['output_conv1'] = calculate_output(config['image_size'], config['conv1'])

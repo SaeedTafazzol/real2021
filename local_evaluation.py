@@ -21,7 +21,7 @@ result, detailed_scores = real_robots.evaluate(
                 intrinsic_timesteps=150e3, # Full intrinsic phase: 15e6
                 extrinsic_timesteps=10e3, # Extrinsic phase 10e3 for each trial
                 extrinsic_trials=3, # Full extrinsic phase: 50 trials
-                visualize=True, # Render the environment in a window
+                visualize=False, # Render the environment in a window
                 goals_dataset_path=DATASET_PATH
 #                , video = (True, True, True) # Record a video (intrinsic, extrinsic, debug info)
             )

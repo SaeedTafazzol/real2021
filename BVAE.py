@@ -7,7 +7,7 @@ from config import config
 
 
 class Encoder(nn.Module):
-  def __init__(self,z=10):
+  def __init__(self):
     super(Encoder, self).__init__()
 
     self.conv1 = nn.Conv2d(config['input_channels'],config['conv1'][0],config['conv1'][1],stride=config['conv1'][2])
@@ -15,10 +15,10 @@ class Encoder(nn.Module):
     self.conv3 = nn.Conv2d(config['conv2'][0],config['conv3'][0],config['conv3'][1],stride=config['conv3'][2])
 
     
-    self.fc = nn.Linear(np.prod(config['output_conv3']),128)
+    self.fc = nn.Linear(np.prod(config['output_conv3']),config['BVAE_hidden'])
  
-    self.mean = nn.Linear(128 ,32)
-    self.log_std = nn.Linear(128 ,32)
+    self.mean = nn.Linear(config['BVAE_hidden'] ,config['BVAE_latent'])
+    self.log_std = nn.Linear(config['BVAE_hidden'] ,config['BVAE_latent'])
 
   def forward(self, img):
     out = F.leaky_relu(self.conv1(img))
@@ -36,8 +36,8 @@ class Decoder(nn.Module):
   def __init__(self):
     super(Decoder, self).__init__()
 
-    self.fc1 = nn.Linear(32,128)
-    self.fc2 = nn.Linear(128,np.prod(config['output_conv3']))
+    self.fc1 = nn.Linear(config['BVAE_latent'],config['BVAE_hidden'])
+    self.fc2 = nn.Linear(config['BVAE_hidden'],np.prod(config['output_conv3']))
     self.conv1 = nn.Conv2d(config['conv3'][0], config['conv2'][0],config['conv3'][1],padding='same')
     self.conv2 = nn.Conv2d(config['conv2'][0],config['conv1'][0],config['conv2'][1],padding='same')
     self.conv3 = nn.Conv2d(config['conv1'][0],config['input_channels'],config['conv1'][1],padding='same')
@@ -95,7 +95,7 @@ class autoencoder(object):
     
     return loss
   def sample(self):
-    standard_nor = torch.distributions.MultivariateNormal(torch.zeros(32,).to(self.device), torch.eye(32,).to(self.device))
+    standard_nor = torch.distributions.MultivariateNormal(torch.zeros(config['BVAE_latent'],).to(self.device), torch.eye(config['BVAE_latent'],).to(self.device))
     latent = standard_nor.sample()
     bern = self.decoder(latent)
     return bern
