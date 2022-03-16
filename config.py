@@ -31,6 +31,10 @@ config = {
     'action_dim': 9,
     'max_action': [1,1,1,1,1,1,1,1.57,1.57],
     'min_action': [-1,-1,-1,-1,-1,-1,-1,0,0],
+    'training_agent_freq':5,
+    'training_BVAE_freq':10,
+    'start_timesteps':10000,
+    'BVAE_pretrain_steps':15,
 }
 
 config['output_conv1'] = calculate_output(config['image_size'], config['conv1'])

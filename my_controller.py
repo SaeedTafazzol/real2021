@@ -7,9 +7,8 @@ import utils
 import torch
 from skimage import io
 import yaml
-import BVAE
 from config import config
-
+import agent
 class RandomPolicy(BasePolicy):
     def __init__(self, action_space, observation_space):
 
@@ -21,14 +20,11 @@ class RandomPolicy(BasePolicy):
 
         self.action_space = action_space
         self.observation_space = observation_space
-        self.batch_size = config['batch_size']
         self.render = True
         self.buffer = utils.ReplayBuffer(observation_space,action_space,self.observation_mode,self.action_mode)
-        self.train_loader = torch.utils.data.DataLoader(self.buffer,batch_size=self.batch_size,num_workers= 8, shuffle=True)
+        self.agent = agent.Agent()
 
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-        self.auto = BVAE.autoencoder(self.device)
+        torch.autograd.set_detect_anomaly(True)
         self.loss = 0
         self.time_step = 0
     def start_intrinsic_phase(self):
@@ -124,22 +120,33 @@ class RandomPolicy(BasePolicy):
         
         
         action = self.action_space.sample()
+
         self.buffer.add(observation,action,observation,0)
         action['render'] = self.render
-        
-        if (self.time_step+1)%10==0 and self.time_step>=1000:
-            self.loss+= self.auto.train(self.train_loader)
+        self.loss = 0
+        if self.time_step==config['start_timesteps']:
+            for _ in range(config['BVAE_pretrain_steps']):
+                self.agent.train_BVAE(self.buffer)
 
-        if (self.time_step+1)%300==0:
-            print(self.time_step,self.loss/100)
-            g = []
-            for i in range(10):
-                generated = self.auto.sample()
-                g.append(generated.detach().cpu().squeeze().numpy().transpose(1,2,0)[:,:,[2,1,0]])
-                
-            cv2.imshow('img',np.concatenate(g,axis=1))
-            cv2.waitKey(1)
-            self.loss = 0
+
+
+        if (self.time_step+1)%config['training_BVAE_freq']==0 and self.time_step > config['start_timesteps']:
+            self.agent.train_BVAE(self.buffer)
+
+
+        if (self.time_step+1)%config['training_agent_freq']==0 and self.time_step > config['start_timesteps']:
+            self.agent.train(self.buffer)
+
+        # if (self.time_step+1)%100==0 and self.time_step > config['start_timesteps']:
+        #     g = []
+        #     for i in range(10):
+        #         generated = self.agent.bvae.sample()
+        #         g.append(generated.detach().cpu().squeeze().numpy().transpose(1,2,0)[:,:,[2,1,0]])
+            
+        #     cv2.imshow('img',np.concatenate(g,axis=1))
+            
+        #     cv2.waitKey(1)
+
         self.time_step+=1
         return action
 

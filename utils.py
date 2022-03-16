@@ -1,10 +1,49 @@
+from config import config
 import numpy as np
 import torch
 import pandas as pd
 from torch.utils.data import Dataset
 from skimage import io
 import os
-class ReplayBuffer(Dataset):
+import cv2
+
+def parse_action(action):
+	return np.concatenate((action['cartesian_command'],action['gripper_command']))
+
+def wrap_action(action):
+	pass
+
+class ReplayBuffer:
+	def __init__(self,observation_space,action_space,observation_mode,action_mode):
+		self.batch_size = config['batch_size']
+		self.storage = Storage(observation_space,action_space,observation_mode,action_mode)
+		self.train_loader = torch.utils.data.DataLoader(self.storage,batch_size=self.batch_size,num_workers= 8, shuffle=True)
+
+	def sample(self):
+
+
+
+		observation,next_observation,action,goal = next(iter(self.train_loader))
+		
+		action = torch.tensor(action,dtype=torch.float).to(config['device'])
+		goal = torch.tensor(goal,dtype=torch.float).to(config['device'])
+		
+
+		for key in observation.keys():
+			if type(observation[key])!=list:# and observation[key].dtype == np.float64:
+				observation[key] = torch.tensor(observation[key],dtype=torch.float).to(config['device'])
+
+		for key in next_observation.keys():
+			if type(next_observation[key])!=list:# and next_observation[key].dtype == np.float64:
+				next_observation[key] = torch.tensor(next_observation[key],dtype=torch.float).to(config['device'])
+		
+
+		return observation,next_observation,action,goal
+	def add(self, observation,action,next_observation,goal):
+		self.storage.add(observation,action,next_observation,goal)
+
+
+class Storage(Dataset):
 	def __init__(self, observation_space, action_space,observation_mode,action_mode, max_size=int(1e6)):
 		self.max_size = max_size
 		self.ptr = 0
@@ -58,7 +97,7 @@ class ReplayBuffer(Dataset):
 			np.save('retina_next/'+str(self.ptr)+'.npy',(next_observation['retina']/255)[0:180,70:250,:])
 
 
-		self.action[self.ptr] = action
+		self.action[self.ptr] = parse_action(action)
 		self.goal[self.ptr] = goal
 
 		self.ptr = (self.ptr + 1) % self.max_size
@@ -74,6 +113,6 @@ class ReplayBuffer(Dataset):
 		goal = self.goal[idx]
 		observation['retina'] = np.load('retina_current/'+str(idx)+'.npy').transpose(2,0,1)
 		next_observation['retina'] = np.load('retina_next/'+str(idx)+'.npy').transpose(2,0,1)
-		
 
 		return observation,next_observation,action,goal
+

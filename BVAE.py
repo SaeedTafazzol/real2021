@@ -27,7 +27,7 @@ class Encoder(nn.Module):
 
     out = out.reshape(-1,np.prod(config['output_conv3']))
     out = F.leaky_relu(self.fc(out))
-    mean = 	F.tanh(self.mean(out))
+    mean = 	torch.tanh(self.mean(out))
     log_std = self.log_std(out)
     return mean,log_std
 
@@ -50,7 +50,7 @@ class Decoder(nn.Module):
                                                 mode='bilinear')))
     out = F.leaky_relu(self.conv2(F.interpolate(out,(config['output_conv1'][1],config['output_conv1'][2]),
                                                 mode='bilinear')))
-    out = F.sigmoid(self.conv3(F.interpolate(out,(config['image_size'][1],config['image_size'][2]),mode='bilinear')))
+    out = torch.sigmoid(self.conv3(F.interpolate(out,(config['image_size'][1],config['image_size'][2]),mode='bilinear')))
 
     return	out
 
@@ -64,10 +64,11 @@ class autoencoder(object):
 
 
   def train(self,data_loader):
-    observation,action,next_observation,goal = next(iter(data_loader))
+    observation,next_observation,action,goal = data_loader.sample()
     batch_size = data_loader.batch_size
-    img = torch.tensor(observation['retina'],dtype=torch.float)
-    img = img.to(self.device)
+    # img = torch.tensor(observation['retina'],dtype=torch.float)
+    # img = img.to(self.device)
+    img = observation['retina']
     beta = 5
     mean,log_std = self.encoder(img)
 
@@ -99,3 +100,7 @@ class autoencoder(object):
     latent = standard_nor.sample()
     bern = self.decoder(latent)
     return bern
+
+  def encode(self,input):
+    mean,log_std = self.encoder(input)
+    return mean
