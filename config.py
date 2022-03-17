@@ -36,6 +36,7 @@ config = {
     'start_timesteps':10000,
     'BVAE_pretrain_steps':15,
     'goal_generation_freq': 500,  # how often we sample z_g from p(z)
+    'internal_step_freq':5,
 
 }
 

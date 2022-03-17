@@ -29,6 +29,10 @@ class RandomPolicy(BasePolicy):
         torch.autograd.set_detect_anomaly(True)
         self.loss = 0
         self.time_step = 0
+        self.internal_time_step = 0
+
+        self.previous_observation = None
+        self.action = None
     def start_intrinsic_phase(self):
         """
         The evaluator will call this function to signal the start of the
@@ -77,7 +81,29 @@ class RandomPolicy(BasePolicy):
         the end of the last step of the extrinsic trial.
         """
         pass
+    def internal_step(self,observation):
+        if (self.internal_time_step) % config['goal_generation_freq'] == 0:
+            self.latent_goal = self.agent.bvae.sample_latent()
 
+        self.action = self.action_space.sample() #remove when we get action out of agent
+      
+        if self.internal_time_step < config['start_timesteps']:
+            self.action = self.action_space.sample()
+
+        else:
+            if self.internal_time_step==config['start_timesteps']:
+                for _ in range(config['BVAE_pretrain_steps']):
+                    self.agent.train_BVAE(self.buffer)
+
+
+            if (self.internal_time_step+1)%config['training_BVAE_freq']==0:
+                self.agent.train_BVAE(self.buffer)
+
+
+            if (self.internal_time_step+1)%config['training_agent_freq']==0:
+                self.agent.train(self.buffer)
+
+        self.internal_time_step +=1
     def step(self, observation, reward, done):
         """
         The step function will receive the observation, reward and done signals
@@ -120,26 +146,12 @@ class RandomPolicy(BasePolicy):
             otherwise it will always be false.
         """
 
-        if (self.time_step) % config['goal_generation_freq'] == 0:
-            self.latent_goal = self.agent.bvae.sample_latent()
 
-        action = self.action_space.sample()
-
-        self.buffer.add(observation,action,observation,self.latent_goal)
-        action['render'] = self.render  # use in skip actions
-        self.loss = 0
-        if self.time_step==config['start_timesteps']:
-            for _ in range(config['BVAE_pretrain_steps']):
-                self.agent.train_BVAE(self.buffer)
+        
 
 
-        if (self.time_step+1)%config['training_BVAE_freq']==0 and self.time_step > config['start_timesteps']:
-            self.agent.train_BVAE(self.buffer)
 
-
-        if (self.time_step+1)%config['training_agent_freq']==0 and self.time_step > config['start_timesteps']:
-            self.agent.train(self.buffer)
-
+        # self.loss = 0
         # if (self.time_step+1)%100==0 and self.time_step > config['start_timesteps']:
         #     g = []
         #     for i in range(10):
@@ -149,8 +161,21 @@ class RandomPolicy(BasePolicy):
         #     cv2.imshow('img',np.concatenate(g,axis=1))
             
         #     cv2.waitKey(1)
+        if (self.time_step+1) %config['internal_step_freq']==0:
+            self.render = True
+
+
+        if self.time_step %config['internal_step_freq']==0:
+            if self.previous_observation is not None:   
+                self.buffer.add(self.previous_observation,self.action,observation,self.latent_goal)
+    
+            self.internal_step(observation)
+            self.previous_observation = observation
+            self.render = False
+
 
         self.time_step+=1
-        return action
+        
+        return self.action
 
 SubmittedPolicy=RandomPolicy
