@@ -96,10 +96,17 @@ class autoencoder(object):
     
     return loss
   def sample(self):
+    # generate new image - decodes latent
     standard_nor = torch.distributions.MultivariateNormal(torch.zeros(config['BVAE_latent'],).to(self.device), torch.eye(config['BVAE_latent'],).to(self.device))
     latent = standard_nor.sample()
     bern = self.decoder(latent)
     return bern
+
+  def sample_latent(self):
+    # sample a goal, etc
+    standard_nor = torch.distributions.MultivariateNormal(torch.zeros(config['BVAE_latent'],).to(self.device), torch.eye(config['BVAE_latent'],).to(self.device))
+    latent = standard_nor.sample()
+    return latent  # z
 
   def encode(self,input):
     mean,log_std = self.encoder(input)

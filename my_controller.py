@@ -117,17 +117,18 @@ class RandomPolicy(BasePolicy):
                 - an extrinsic trial ends
             otherwise it will always be false.
         """
-        
-        
+
+        if (self.time_step) % config['goal_generation_freq'] == 0:
+            latent_goal = self.agent.bvae.sample_latent()
+
         action = self.action_space.sample()
 
-        self.buffer.add(observation,action,observation,0)
-        action['render'] = self.render
+        self.buffer.add(observation,action,observation,latent_goal)
+        action['render'] = self.render  # use in skip actions
         self.loss = 0
         if self.time_step==config['start_timesteps']:
             for _ in range(config['BVAE_pretrain_steps']):
                 self.agent.train_BVAE(self.buffer)
-
 
 
         if (self.time_step+1)%config['training_BVAE_freq']==0 and self.time_step > config['start_timesteps']:

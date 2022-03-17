@@ -35,6 +35,8 @@ config = {
     'training_BVAE_freq':10,
     'start_timesteps':10000,
     'BVAE_pretrain_steps':15,
+    'goal_generation_freq': 500,  # how often we sample z_g from p(z)
+
 }
 
 config['output_conv1'] = calculate_output(config['image_size'], config['conv1'])

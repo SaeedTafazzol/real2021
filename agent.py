@@ -1,4 +1,5 @@
 import copy
+import random
 
 import numpy as np
 import torch
@@ -36,7 +37,7 @@ class Actor(nn.Module):
 	def __init__(self):
 		super(Actor, self).__init__()
 
-		self.l1 = nn.Linear(np.prod(config['output_conv3']), config['agent_hidden'])
+		self.l1 = nn.Linear(config['BVAE_latent'], config['agent_hidden'])
 		self.l2 = nn.Linear(config['agent_hidden'], config['agent_hidden'])
 		self.l3 = nn.Linear(config['agent_hidden'], config['action_dim'])
 
@@ -57,12 +58,12 @@ class Critic(nn.Module):
 		super(Critic, self).__init__()
 
 		# Q1 architecture
-		self.l1 = nn.Linear(np.prod(config['output_conv3']) + config['action_dim'], config['agent_hidden'])
+		self.l1 = nn.Linear(config['BVAE_latent'] + config['action_dim'], config['agent_hidden'])
 		self.l2 = nn.Linear(config['agent_hidden'], config['agent_hidden'])
 		self.l3 = nn.Linear(config['agent_hidden'], 1)
 
 		# Q2 architecture
-		self.l4 = nn.Linear(np.prod(config['output_conv3']) + config['action_dim'], config['agent_hidden'])
+		self.l4 = nn.Linear(config['BVAE_latent'] + config['action_dim'], config['agent_hidden'])
 		self.l5 = nn.Linear(config['agent_hidden'], config['agent_hidden'])
 		self.l6 = nn.Linear(config['agent_hidden'], 1)
 
@@ -96,8 +97,8 @@ class Agent(object):
 			noise_clip=0.5,
 			policy_freq=2
 	):
-		self.representation = Representation().to(device)
-		self.representation_optimizer = torch.optim.Adam(self.representation.parameters(), lr=3e-4)
+		# self.representation = Representation().to(device)
+		# self.representation_optimizer = torch.optim.Adam(self.representation.parameters(), lr=3e-4)
 
 		self.actor = Actor().to(device)
 		self.actor_target = copy.deepcopy(self.actor)
@@ -133,17 +134,14 @@ class Agent(object):
 		# Sample replay buffer
 		state_raw, next_state_raw,action ,goal = replay_buffer.sample()
 
-
-		# Get state, next_state representations
-		state = self.representation(state_raw['retina'])
-		next_state = self.representation(next_state_raw['retina'])
-
-		state_encoding = self.bvae.encode(state_raw['retina'])
-		
-		# reward = torch.norm(state_encoding-goal,dim=-1)
-		reward = torch.tensor(0).to(device)
-
 		with torch.no_grad():
+			state = self.bvae.encode(state_raw['retina'])
+			next_state = self.bvae.encode(next_state_raw['retina'])
+			if random.random() < 0.5:
+				goal = self.bvae.sample_latent()
+
+			reward = -torch.norm(next_state-goal,dim=-1)
+
 			# Select action according to policy and add clipped noise
 			noise = (
 					torch.randn_like(action) * self.policy_noise
@@ -166,28 +164,19 @@ class Agent(object):
 
 		# Optimize the critic
 		self.critic_optimizer.zero_grad()
-		self.representation_optimizer.zero_grad()
 		critic_loss.backward()
 		self.critic_optimizer.step()
-		# Optimise the representation
-		self.representation_optimizer.step()
 
 		# Delayed policy updates
 		if self.total_it % self.policy_freq == 0:
 
-			# Compute actor losse
-			state = self.representation(state_raw['retina'])
-			next_state = self.representation(next_state_raw['retina'])
-
+			# Compute actor losses
 			actor_loss = -self.critic.Q1(state, self.actor(state)).mean()
 
 			# Optimize the actor
 			self.actor_optimizer.zero_grad()
-			self.representation_optimizer.zero_grad()
 			actor_loss.backward()
 			self.actor_optimizer.step()
-			# Optimise the representation
-			self.representation_optimizer.step()
 
 			# Update the frozen target models
 			for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
@@ -204,9 +193,6 @@ class Agent(object):
 		torch.save(self.actor.state_dict(), filename + "_actor")
 		torch.save(self.actor_optimizer.state_dict(), filename + "_actor_optimizer")
 
-		torch.save(self.representation.state_dict(), filename + "_representation")
-		torch.save(self._representation_optimizer.state_dict(), filename + "__representation_optimizer")
-
 	def load(self, filename):
 		self.critic.load_state_dict(torch.load(filename + "_critic"))
 		self.critic_optimizer.load_state_dict(torch.load(filename + "_critic_optimizer"))
@@ -216,8 +202,5 @@ class Agent(object):
 		self.actor_optimizer.load_state_dict(torch.load(filename + "_actor_optimizer"))
 		self.actor_target = copy.deepcopy(self.actor)
 
-		self._representation.load_state_dict(torch.load(filename + "__representation"))
-		self._representation_optimizer.load_state_dict(torch.load(filename + "__representation_optimizer"))
-	
 	def train_BVAE(self, replay_buffer):
 		self.bvae.train(replay_buffer)
