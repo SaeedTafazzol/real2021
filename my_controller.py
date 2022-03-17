@@ -85,7 +85,7 @@ class RandomPolicy(BasePolicy):
         if (self.internal_time_step) % config['goal_generation_freq'] == 0:
             self.latent_goal = self.agent.bvae.sample_latent()
 
-        self.action = self.action_space.sample() #remove when we get action out of agent
+        self.action = self.action_space.sample() #remove when we get the action from agent
       
         if self.internal_time_step < config['start_timesteps']:
             self.action = self.action_space.sample()
@@ -152,7 +152,7 @@ class RandomPolicy(BasePolicy):
 
 
         # self.loss = 0
-        # if (self.time_step+1)%100==0 and self.time_step > config['start_timesteps']:
+        # if (self.time_step+1)%1000==0:
         #     g = []
         #     for i in range(10):
         #         generated = self.agent.bvae.sample()
@@ -160,10 +160,12 @@ class RandomPolicy(BasePolicy):
             
         #     cv2.imshow('img',np.concatenate(g,axis=1))
             
+
         #     cv2.waitKey(1)
+
+        
         if (self.time_step+1) %config['internal_step_freq']==0:
             self.render = True
-
 
         if self.time_step %config['internal_step_freq']==0:
             if self.previous_observation is not None:   
@@ -172,6 +174,9 @@ class RandomPolicy(BasePolicy):
             self.internal_step(observation)
             self.previous_observation = observation
             self.render = False
+
+
+        self.action['render'] = self.render
 
 
         self.time_step+=1
