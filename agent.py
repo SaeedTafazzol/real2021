@@ -137,11 +137,16 @@ class Agent(object):
 		with torch.no_grad():
 			state = self.bvae.encode(state_raw['retina'])
 			next_state = self.bvae.encode(next_state_raw['retina'])
-			if random.random() < 0.5:
-				goal = self.bvae.sample_latent()
 
-			reward = -torch.norm(next_state-goal,dim=-1)
 
+			replacing_mask = torch.rand([goal.shape[0],1]).to(config['device'])
+			# print('rep',replacing_mask.shape)
+			# print('goal',goal.shape)
+			# print('sampled',self.bvae.sample_latent([goal.shape[0],]).to(config['device']).shape)
+			goal = torch.where(replacing_mask>0.5,goal,self.bvae.sample_latent([goal.shape[0],]).to(config['device']))
+			
+			reward = -torch.norm(next_state-goal,dim=-1).unsqueeze(-1)
+			# print('reward',reward.shape)
 			# Select action according to policy and add clipped noise
 			noise = (
 					torch.randn_like(action) * self.policy_noise
@@ -153,13 +158,19 @@ class Agent(object):
 
 			# Compute the target Q value
 			target_Q1, target_Q2 = self.critic_target(next_state, next_action)
+			# print('tar',target_Q1.shape,target_Q2.shape)
 			target_Q = torch.min(target_Q1, target_Q2)
+			# print('tar2',target_Q.shape)
 			target_Q = reward + self.discount * target_Q
 
 		# Get current Q estimates
 		current_Q1, current_Q2 = self.critic(state, action)
 
 		# Compute critic loss
+		# print('1',current_Q1.shape)
+		# print('2',target_Q.shape)
+		# print('3',current_Q2.shape)
+
 		critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
 
 		# Optimize the critic

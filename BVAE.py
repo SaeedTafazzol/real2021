@@ -102,10 +102,10 @@ class autoencoder(object):
     bern = self.decoder(latent)
     return bern
 
-  def sample_latent(self):
+  def sample_latent(self,sample_shape=[]):
     # sample a goal, etc
-    standard_nor = torch.distributions.MultivariateNormal(torch.zeros(config['BVAE_latent'],).to(self.device), torch.eye(config['BVAE_latent'],).to(self.device))
-    latent = standard_nor.sample()
+    standard_nor = torch.distributions.MultivariateNormal(torch.zeros(config['BVAE_latent'],), torch.eye(config['BVAE_latent'],))
+    latent = standard_nor.sample(sample_shape)
     return latent  # z
 
   def encode(self,input):

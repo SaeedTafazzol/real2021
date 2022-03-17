@@ -24,6 +24,8 @@ class RandomPolicy(BasePolicy):
         self.buffer = utils.ReplayBuffer(observation_space,action_space,self.observation_mode,self.action_mode)
         self.agent = agent.Agent()
 
+        self.latent_goal = self.agent.bvae.sample_latent()
+
         torch.autograd.set_detect_anomaly(True)
         self.loss = 0
         self.time_step = 0
@@ -119,11 +121,11 @@ class RandomPolicy(BasePolicy):
         """
 
         if (self.time_step) % config['goal_generation_freq'] == 0:
-            latent_goal = self.agent.bvae.sample_latent()
+            self.latent_goal = self.agent.bvae.sample_latent()
 
         action = self.action_space.sample()
 
-        self.buffer.add(observation,action,observation,latent_goal)
+        self.buffer.add(observation,action,observation,self.latent_goal)
         action['render'] = self.render  # use in skip actions
         self.loss = 0
         if self.time_step==config['start_timesteps']:
