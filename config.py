@@ -33,10 +33,11 @@ config = {
     'min_action': [-1,-1,-1,-1,-1,-1,-1,0,0],
     'training_agent_freq':5,
     'training_BVAE_freq':10,
-    'start_timesteps':10000,
+    'start_timesteps':100,#10000
     'BVAE_pretrain_steps':15,
-    'goal_generation_freq': 500,  # how often we sample z_g from p(z)
+    'goal_generation_freq': 100,#500  # how often we sample z_g from p(z)
     'internal_step_freq':5,
+    'hindsights_per_step':10,
 
 }
 

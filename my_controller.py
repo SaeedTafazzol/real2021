@@ -1,4 +1,5 @@
 import imp
+from venv import create
 from real_robots.policy import BasePolicy
 import matplotlib.pyplot as plt
 import numpy as np
@@ -9,6 +10,7 @@ from skimage import io
 import yaml
 from config import config
 import agent
+import random
 class RandomPolicy(BasePolicy):
     def __init__(self, action_space, observation_space):
 
@@ -33,6 +35,8 @@ class RandomPolicy(BasePolicy):
 
         self.previous_observation = None
         self.action = None
+        
+
     def start_intrinsic_phase(self):
         """
         The evaluator will call this function to signal the start of the
@@ -81,16 +85,38 @@ class RandomPolicy(BasePolicy):
         the end of the last step of the extrinsic trial.
         """
         pass
+
+    def create_hindsight(self):
+		
+        for t in range(len(self.buffer.current_episode_idx)):
+    
+            length = len(self.buffer.current_episode_idx)
+            current_ptr = self.buffer.current_episode_idx[t]
+            observation,next_observation,action,goal =  self.buffer[current_ptr]
+
+            for k in range(config['hindsights_per_step']):
+                ptr = self.buffer.current_episode_idx[random.randint(t,length-1)]
+                _,new_goal,_,_ =  self.buffer[ptr]
+                self.buffer.add(observation,action,next_observation,self.agent.bvae.encode(new_goal['retina']),True)
+
     def internal_step(self,observation):
         if (self.internal_time_step) % config['goal_generation_freq'] == 0:
-            self.latent_goal = self.agent.bvae.sample_latent()
+            
+            if self.internal_time_step > config['start_timesteps']:
+                self.create_hindsight()
 
-        self.action = self.action_space.sample() #remove when we get the action from agent
-      
+
+            self.latent_goal = self.agent.bvae.sample_latent()
+            self.buffer.reset_episode()
+
+
+        # self.action = self.action_space.sample() #remove when we get the action from agent
+
         if self.internal_time_step < config['start_timesteps']:
             self.action = self.action_space.sample()
 
         else:
+            self.action = self.agent.select_action(observation)
             if self.internal_time_step==config['start_timesteps']:
                 for _ in range(config['BVAE_pretrain_steps']):
                     self.agent.train_BVAE(self.buffer)

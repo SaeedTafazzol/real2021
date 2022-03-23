@@ -1,3 +1,6 @@
+import imp
+
+from scipy import rand
 from config import config
 import numpy as np
 import torch
@@ -6,23 +9,40 @@ from torch.utils.data import Dataset
 from skimage import io
 import os
 import cv2
-
+from collections import OrderedDict
+import random
 def parse_action(action):
 	return np.concatenate((action['cartesian_command'],action['gripper_command']))
 
 def wrap_action(action):
-	pass
+		return OrderedDict({'cartesian_command':action[0:7],'gripper_command':action[7:9],'render':False})
+
+
 
 class ReplayBuffer:
 	def __init__(self,observation_space,action_space,observation_mode,action_mode):
 		self.batch_size = config['batch_size']
 		self.storage = Storage(observation_space,action_space,observation_mode,action_mode)
 		self.train_loader = torch.utils.data.DataLoader(self.storage,batch_size=self.batch_size,num_workers= 8, shuffle=True)
+		self.current_episode_idx = []
+	
+	def reset_episode(self):
+		self.current_episode_idx = []
+
+	def __getitem__(self, idx):
+		observation,next_observation,action,goal = self.storage[idx]
+
+		observation = torch.tensor(observation,dtype= torch.float).to(config['device'])
+		next_observation = torch.tensor(next_observation,dtype= torch.float).to(config['device'])
+		action = torch.tensor(action,dtype= torch.float).to(config['device'])
+		goal = torch.tensor(goal,dtype= torch.float).to(config['device'])
+
+		return observation,next_observation,action,goal
+
+
+	
 
 	def sample(self):
-
-
-
 		observation,next_observation,action,goal = next(iter(self.train_loader))
 		
 		action = torch.tensor(action,dtype=torch.float).to(config['device'])
@@ -39,8 +59,13 @@ class ReplayBuffer:
 		
 
 		return observation,next_observation,action,goal
-	def add(self, observation,action,next_observation,goal):
+
+	def add(self, observation,action,next_observation,goal,hindsight = False):
+		if not hindsight:
+			self.current_episode_idx.append(self.storage.ptr)
 		self.storage.add(observation,action,next_observation,goal)
+
+		
 
 
 class Storage(Dataset):
@@ -65,7 +90,6 @@ class Storage(Dataset):
 			os.makedirs('retina_next')
 
 		self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
 
 	def add(self, observation,action,next_observation,goal):

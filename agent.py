@@ -123,9 +123,12 @@ class Agent(object):
 		self.total_it = 0
 
 
-	def select_action(self, state):
-		state = torch.FloatTensor(state.reshape(1, -1)).to(device)
-		return self.actor(state).cpu().data.numpy().flatten()
+	def select_action(self, observation):
+		retina = observation['retina']
+		retina = retina[0:180,70:250,:].transpose(2,0,1)
+		retina = torch.FloatTensor(retina).to(device).unsqueeze(0)
+		print('retina_shape',retina.shape)
+		return wrap_action(self.actor(self.bvae.encode(retina)).cpu().data.numpy().flatten())
 
 
 	def train(self, replay_buffer):
