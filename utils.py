@@ -1,4 +1,4 @@
-import imp
+
 
 from scipy import rand
 from config import config
@@ -11,6 +11,9 @@ import os
 import cv2
 from collections import OrderedDict
 import random
+from RealTranforms import CropImage, ToTensor
+from torchvision.transforms import Compose
+
 def parse_action(action):
 	return np.concatenate((action['cartesian_command'],action['gripper_command']))
 
@@ -25,6 +28,10 @@ class ReplayBuffer:
 		self.storage = Storage(observation_space,action_space,observation_mode,action_mode)
 		self.train_loader = torch.utils.data.DataLoader(self.storage,batch_size=self.batch_size,num_workers= 8, shuffle=True)
 		self.current_episode_idx = []
+
+		self.composed = Compose([CropImage(observation_mode), ToTensor(config['device'])])
+		self.crop = CropImage(observation_mode)
+		self.toTensor = ToTensor(config['device'])
 	
 	def reset_episode(self):
 		self.current_episode_idx = []
@@ -32,35 +39,28 @@ class ReplayBuffer:
 	def __getitem__(self, idx):
 		observation,next_observation,action,goal = self.storage[idx]
 
-		observation = torch.tensor(observation,dtype= torch.float).to(config['device'])
-		next_observation = torch.tensor(next_observation,dtype= torch.float).to(config['device'])
+		observation = self.toTensor(observation)
+		next_observation = self.toTensor(next_observation)
 		action = torch.tensor(action,dtype= torch.float).to(config['device'])
 		goal = torch.tensor(goal,dtype= torch.float).to(config['device'])
 
 		return observation,next_observation,action,goal
 
 
-	
-
 	def sample(self):
 		observation,next_observation,action,goal = next(iter(self.train_loader))
 		
 		action = torch.tensor(action,dtype=torch.float).to(config['device'])
 		goal = torch.tensor(goal,dtype=torch.float).to(config['device'])
-		
-
-		for key in observation.keys():
-			if type(observation[key])!=list:# and observation[key].dtype == np.float64:
-				observation[key] = torch.tensor(observation[key],dtype=torch.float).to(config['device'])
-
-		for key in next_observation.keys():
-			if type(next_observation[key])!=list:# and next_observation[key].dtype == np.float64:
-				next_observation[key] = torch.tensor(next_observation[key],dtype=torch.float).to(config['device'])
-		
+		observation = self.toTensor(observation)
+		next_observation = self.toTensor(next_observation)
 
 		return observation,next_observation,action,goal
 
 	def add(self, observation,action,next_observation,goal,hindsight = False):
+		# Takes a full obs dict;
+
+		# Hindsight messes up the indices so store the indices
 		if not hindsight:
 			self.current_episode_idx.append(self.storage.ptr)
 		self.storage.add(observation,action,next_observation,goal)
@@ -91,9 +91,10 @@ class Storage(Dataset):
 
 		self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+		self.crop = CropImage(observation_mode)
+
 
 	def add(self, observation,action,next_observation,goal):
-
 
 		self.observation[self.ptr] = {
 		'image_name':str(self.ptr)+'.png',
@@ -107,19 +108,8 @@ class Storage(Dataset):
 		'touch_sensors':next_observation['touch_sensors'],
 		}
 
-
-		if self.observation_mode=='easy':
-			np.save('retina_current/'+str(self.ptr)+'.npy',
-				np.concatenate((np.expand_dims(observation['mask'],-1),observation['retina']/255),axis=-1)[0:180,70:250,:])
-			np.save('retina_next/'+str(self.ptr)+'.npy',
-				np.concatenate((np.expand_dims(next_observation['mask'],-1),next_observation['retina']/255),axis=-1)[0:180,70:250,:])
-			self.observation[self.ptr]['object_positions'] = observation['object_positions']
-			self.next_observation[self.ptr]['object_positions'] = next_observation['object_positions']
-			
-		else:
-			np.save('retina_current/'+str(self.ptr)+'.npy',(observation['retina']/255)[0:180,70:250,:])
-			np.save('retina_next/'+str(self.ptr)+'.npy',(next_observation['retina']/255)[0:180,70:250,:])
-
+		np.save('retina_current/'+str(self.ptr)+'.npy', self.crop(observation))
+		np.save('retina_next/'+str(self.ptr)+'.npy', self.crop(next_observation))
 
 		self.action[self.ptr] = parse_action(action)
 		self.goal[self.ptr] = goal

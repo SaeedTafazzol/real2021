@@ -1,16 +1,15 @@
-import imp
-from venv import create
-from real_robots.policy import BasePolicy
-import matplotlib.pyplot as plt
-import numpy as np
-import cv2
-import utils
-import torch
-from skimage import io
-import yaml
-from config import config
-import agent
 import random
+
+import torch
+import yaml
+from real_robots.policy import BasePolicy
+
+import agent
+import utils
+from RealTranforms import CropImage, ToTensor
+from config import config
+
+
 class RandomPolicy(BasePolicy):
     def __init__(self, action_space, observation_space):
 
@@ -23,7 +22,7 @@ class RandomPolicy(BasePolicy):
         self.action_space = action_space
         self.observation_space = observation_space
         self.render = True
-        self.buffer = utils.ReplayBuffer(observation_space,action_space,self.observation_mode,self.action_mode)
+        self.buffer = utils.ReplayBuffer(observation_space, action_space, self.observation_mode, self.action_mode)
         self.agent = agent.Agent()
 
         self.latent_goal = self.agent.bvae.sample_latent()
@@ -35,7 +34,10 @@ class RandomPolicy(BasePolicy):
 
         self.previous_observation = None
         self.action = None
-        
+
+        # Transforms
+        self.crop = CropImage(self.observation_mode)
+        self.toTensor = ToTensor(config['device'])
 
     def start_intrinsic_phase(self):
         """
@@ -87,49 +89,55 @@ class RandomPolicy(BasePolicy):
         pass
 
     def create_hindsight(self):
-		
-        for t in range(len(self.buffer.current_episode_idx)):
-    
-            length = len(self.buffer.current_episode_idx)
+        # Nair: for every t steps, take k steps of hindsight
+
+        for t in range(len(self.buffer.current_episode_idx)):  # original length
+
+            length = len(self.buffer.current_episode_idx)  # length is expanding after buffer.add()
             current_ptr = self.buffer.current_episode_idx[t]
-            observation,next_observation,action,goal =  self.buffer[current_ptr]
+            observation, next_observation, action, goal = self.buffer[current_ptr]  # just torch.tensors
 
-            for k in range(config['hindsights_per_step']):
-                ptr = self.buffer.current_episode_idx[random.randint(t,length-1)]
-                _,new_goal,_,_ =  self.buffer[ptr]
-                self.buffer.add(observation,action,next_observation,self.agent.bvae.encode(new_goal['retina']),True)
+            for k in range(config['hindsights_per_step']):  # hindsight!
+                ptr = self.buffer.current_episode_idx[random.randint(t, length - 1)]  # pick t < index < length_buffer
+                _, new_goal_state, _, _ = self.buffer[ptr]  # get the obs to encode as the new goal
+                self.buffer.add(observation, action, next_observation, self.agent.bvae.encode(self.crop(new_goal_state[
+                                                                                                            'retina'])),True)
 
-    def internal_step(self,observation):
+    def internal_step(self, observation):
+
+        # New "episode": sample latent goal from prior (we use goal freq i.o. episodes
         if (self.internal_time_step) % config['goal_generation_freq'] == 0:
-            
+
+            # Implement the hindsight for the previous batch processed:
             if self.internal_time_step > config['start_timesteps']:
                 self.create_hindsight()
-
 
             self.latent_goal = self.agent.bvae.sample_latent()
             self.buffer.reset_episode()
 
-
-        # self.action = self.action_space.sample() #remove when we get the action from agent
-
+        # For the first xx steps we just sample random actions
         if self.internal_time_step < config['start_timesteps']:
             self.action = self.action_space.sample()
 
         else:
+            # Get agent action
             self.action = self.agent.select_action(observation)
-            if self.internal_time_step==config['start_timesteps']:
+
+            # Pretrain the bvae after we collected xx steps
+            if self.internal_time_step == config['start_timesteps']:
                 for _ in range(config['BVAE_pretrain_steps']):
                     self.agent.train_BVAE(self.buffer)
 
-
-            if (self.internal_time_step+1)%config['training_BVAE_freq']==0:
+            # Then train the bvae every B steps
+            if (self.internal_time_step + 1) % config['training_BVAE_freq'] == 0:
                 self.agent.train_BVAE(self.buffer)
 
-
-            if (self.internal_time_step+1)%config['training_agent_freq']==0:
+            # Train agent every A steps
+            if (self.internal_time_step + 1) % config['training_agent_freq'] == 0:
                 self.agent.train(self.buffer)
 
-        self.internal_time_step +=1
+        self.internal_time_step += 1
+
     def step(self, observation, reward, done):
         """
         The step function will receive the observation, reward and done signals
@@ -172,41 +180,33 @@ class RandomPolicy(BasePolicy):
             otherwise it will always be false.
         """
 
-
-        
-
-
-
         # self.loss = 0
         # if (self.time_step+1)%1000==0:
         #     g = []
         #     for i in range(10):
         #         generated = self.agent.bvae.sample()
         #         g.append(generated.detach().cpu().squeeze().numpy().transpose(1,2,0)[:,:,[2,1,0]])
-            
         #     cv2.imshow('img',np.concatenate(g,axis=1))
-            
-
         #     cv2.waitKey(1)
 
-        
-        if (self.time_step+1) %config['internal_step_freq']==0:
+        # Internal step is all about taking bigger steps: Render image every BI steps so we see movement
+        if (self.time_step + 1) % config['internal_step_freq'] == 0:
             self.render = True
 
-        if self.time_step %config['internal_step_freq']==0:
-            if self.previous_observation is not None:   
-                self.buffer.add(self.previous_observation,self.action,observation,self.latent_goal)
-    
+        # Add to buffer every BI steps
+        if self.time_step % config['internal_step_freq'] == 0:
+            if self.previous_observation is not None:
+                self.buffer.add(self.previous_observation, self.action, observation, self.latent_goal)
+
             self.internal_step(observation)
             self.previous_observation = observation
             self.render = False
 
-
         self.action['render'] = self.render
 
+        self.time_step += 1
 
-        self.time_step+=1
-        
         return self.action
 
-SubmittedPolicy=RandomPolicy
+
+SubmittedPolicy = RandomPolicy
